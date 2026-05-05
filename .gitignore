@@ -1,0 +1,8 @@
+*.json
+.env
+node_modules/
+instructions/
+
+Backend/upsc-124bd-firebase-adminsdk-fbsvc-18fb90a8a3.json
+.env
+node_modules
