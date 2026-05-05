@@ -1,0 +1,7 @@
+{
+  "expo": {
+    "name": "Thozhan AI",
+    "slug": "thozhan-ai",
+    "plugins": ["expo-web-browser"]
+  }
+}
