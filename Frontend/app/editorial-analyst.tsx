@@ -1,207 +1,327 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, TextInput, TextStyle, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, Dimensions } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
-import { Sparkles, ChevronRight, User, Send, ArrowLeft } from 'lucide-react-native';
+import { Sparkles, ArrowLeft, Bookmark, Clock, ChevronRight } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import GlobalHeader from '../components/GlobalHeader'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MotiView } from 'moti';
 
 const isWeb = Platform.OS === 'web';
 const { width } = Dimensions.get('window');
 
-const mockData = {
-    syllabusPath: ["GS II", "Polity", "Judiciary"],
-    publishedDate: "OCT 24, 2023",
-    readingTime: "8 MINS",
-    bannerImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=1000", 
-    mentorNote: "Focus on the procedural sanctity of Constitutional Benches."
-};
-
 export default function EditorialAnalyst() {
     const { theme, isDarkMode } = useTheme();
-    const { title } = useLocalSearchParams();
+    const { id } = useLocalSearchParams();
     const router = useRouter();
     
-    const [activeTab, setActiveTab] = useState('PRELIMS');
-    const [isTyping, setIsTyping] = useState(false);
-    const [userInput, setUserInput] = useState('');
+    const [article, setArticle] = useState<any>(null);
+    const [mcqs, setMcqs] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [markingRead, setMarkingRead] = useState(false);
+    const [isRead, setIsRead] = useState(false);
+    const [structuredAffairId, setStructuredAffairId] = useState<string | null>(null);
     
     const primaryTeal = isDarkMode ? '#5FA4AD' : '#2D5A61';
 
-    const [messages, setMessages] = useState([
-        { id: 1, type: 'mentor', text: mockData.mentorNote }
-    ]);
+    useEffect(() => {
+        if (!id) return;
+        const fetchDetails = async () => {
+            try {
+                const [articleRes, mcqsRes] = await Promise.all([
+                    fetch(`${process.env.EXPO_PUBLIC_API_URL}/current-affairs/article/${id}`),
+                    fetch(`${process.env.EXPO_PUBLIC_API_URL}/current-affairs/article/${id}/mcqs`)
+                ]);
+                const articleJson = await articleRes.json();
+                const mcqsJson = await mcqsRes.json();
+                
+                if (articleJson.success) {
+                    setArticle(articleJson.data);
+                } else {
+                    setError(articleJson.message);
+                }
+                
+                if (mcqsJson.success) {
+                    setMcqs(mcqsJson.data || []); // API might return data directly or items
+                }
+                
+                const token = await AsyncStorage.getItem('accessToken');
+                if (token) {
+                    const progRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/v2/current-affairs/today`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const progJson = await progRes.json();
+                    if (progJson.success) {
+                        const found = progJson.data.affairs.find((a: any) => a.rawArticleId === id);
+                        if (found) {
+                            setStructuredAffairId(found.id);
+                            setIsRead(found.isRead);
+                        }
+                    }
+                }
+            } catch (err: any) {
+                setError(err.message || 'Failed to load details');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDetails();
+    }, [id]);
 
-    const tabContent = {
-        PRELIMS: "Article 145(3) mandates a minimum of 5 judges for 'substantial questions of law'. For Prelims, remember: 1. It's a mandatory quorum. 2. CJI is the sole authority to constitute it. 3. This differs from a Division Bench (2) or Full Bench (3). Expect questions on the 'Master of Roster' doctrine.",
-        MAINS: "In GS II, discuss the 'Constitutional Silence' on the timeframe for constituting such benches. You can argue that delay in forming 145(3) benches impacts fundamental rights. Contrast this with the 'Supreme Court of the United States' where the full court hears every case.",
-        INTERVIEW: "If asked about judicial reforms, suggest a 'Permanent Constitution Bench' to prevent the CJI's administrative workload from delaying constitutional matters. Maintain a balanced view: while specialization helps, a rotating bench ensures varied judicial philosophies."
+    const parseJSON = (val: any) => {
+        if (!val) return [];
+        if (typeof val !== 'string') return val;
+        try {
+            return JSON.parse(val);
+        } catch {
+            return [val];
+        }
     };
 
-    useEffect(() => {
-        setIsTyping(true);
-        const timer = setTimeout(() => {
-            setIsTyping(false);
-            const aiMsg = {
-                id: Date.now(),
-                type: 'ai',
-                text: tabContent[activeTab as keyof typeof tabContent],
-                label: `ANALYSIS • ${activeTab}`
-            };
-            setMessages(prev => [...prev, aiMsg]);
-        }, 600);
-        return () => clearTimeout(timer);
-    }, [activeTab]);
-
-    const handleSend = () => {
-        if (!userInput.trim()) return;
-        const newUserMsg = { id: Date.now(), type: 'user', text: userInput };
-        setMessages(prev => [...prev, newUserMsg]);
-        setUserInput('');
-        setIsTyping(true);
-        setTimeout(() => {
-            setIsTyping(false);
-            const reply = { 
-                id: Date.now() + 1, 
-                type: 'ai', 
-                text: "That's a sharp observation. Considering the 'Master of Roster' doctrine, how does this impact judicial independence?", 
-                label: "AI FOLLOW-UP" 
-            };
-            setMessages(prev => [...prev, reply]);
-        }, 1200);
+    const markAsRead = async () => {
+        if (!structuredAffairId || markingRead || isRead) return;
+        
+        setIsRead(true);
+        setMarkingRead(true);
+        
+        try {
+            const token = await AsyncStorage.getItem('accessToken');
+            const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/v2/current-affairs/mark-read`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ affairId: structuredAffairId })
+            });
+            const json = await response.json();
+            
+            if (!json.success) {
+                setIsRead(false);
+                alert(json.message);
+            }
+        } catch (error) {
+            setIsRead(false);
+            alert('Failed to mark as read');
+        } finally {
+            setMarkingRead(false);
+        }
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC' }]}>
+        <View style={[styles.container, { backgroundColor: theme.background }]}>
             <Stack.Screen options={{ headerShown: false }} />
             <GlobalHeader />
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 
-                {/* Back Button & Breadcrumbs */}
                 <View style={styles.headerNavRow}>
                     <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
                         <ArrowLeft size={20} color={primaryTeal} />
                     </TouchableOpacity>
                     <View style={styles.breadcrumbContainer}>
-                        {mockData.syllabusPath.map((p, i) => (
-                            <Text key={i} style={[styles.breadcrumbText, { color: primaryTeal }]}>
-                                {p}{i < mockData.syllabusPath.length - 1 ? "   /   " : ""}
-                            </Text>
-                        ))}
+                        <Text style={[styles.breadcrumbText, { color: primaryTeal }]}>
+                            {article?.category?.split('•')[0]?.trim() || "CURRENT AFFAIRS"}
+                        </Text>
                     </View>
-                </View>
-
-                <Text style={[styles.mainTitle, { color: theme.text }]}>
-                    {title || "Supreme Court clarifies Article 145(3) regarding Constitutional Benches"}
-                </Text>
-                
-                <View style={styles.metaRow}>
-                    <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>PUBLISHED: <Text style={{ color: theme.text }}>{mockData.publishedDate}</Text></Text>
-                    <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>   •   READING TIME: <Text style={{ color: theme.text }}>{mockData.readingTime}</Text></Text>
-                </View>
-
-                {/* Tabs */}
-                <View style={[styles.tabWrapper, { borderBottomColor: isDarkMode ? '#1E293B' : '#E2E8F0' }]}>
-                    {['PRELIMS', 'MAINS', 'INTERVIEW'].map((tab) => (
+                    <View style={styles.headerActions}>
                         <TouchableOpacity 
-                            key={tab}
-                            onPress={() => setActiveTab(tab)}
-                            style={[styles.tab, activeTab === tab && { borderBottomColor: primaryTeal, borderBottomWidth: 3 }]}
+                            style={styles.actionBtn} 
+                            onPress={markAsRead}
+                            disabled={isRead || markingRead || !structuredAffairId}
                         >
-                            <Text style={[styles.tabText, activeTab === tab ? { color: primaryTeal } : { color: '#94A3B8' }]}>
-                                {tab}
-                            </Text>
+                            {markingRead ? (
+                                <ActivityIndicator size="small" color={primaryTeal} />
+                            ) : (
+                                <Bookmark 
+                                    size={20} 
+                                    color={isRead ? primaryTeal : theme.textSecondary} 
+                                    fill={isRead ? primaryTeal : 'transparent'}
+                                />
+                            )}
                         </TouchableOpacity>
-                    ))}
-                </View>
-
-                <View style={[styles.bannerContainer, { backgroundColor: isDarkMode ? '#1E293B' : '#334155' }]}>
-                    <Image 
-                        source={{ uri: mockData.bannerImageUrl }} 
-                        style={styles.bannerImage} 
-                        resizeMode="cover" 
-                    />
-                </View>
-
-                {/* Chat AI Box */}
-                <View style={[styles.chatBoxContainer, { 
-                    backgroundColor: isDarkMode ? '#1E293B' : '#FFF',
-                    borderColor: isDarkMode ? '#334155' : '#E2E8F0'
-                }]}>
-                    <View style={[styles.chatBoxHeader, { 
-                        borderBottomColor: isDarkMode ? '#334155' : '#F1F5F9',
-                        backgroundColor: isDarkMode ? '#1E293B' : '#F8FAFC'
-                    }]}>
-                        <View style={styles.statusDot} />
-                        <Text style={[styles.chatBoxHeaderTitle, { color: isDarkMode ? '#94A3B8' : '#475569' }]}>ETHORA ANALYST AI</Text>
-                        <Sparkles size={14} color={primaryTeal} />
                     </View>
+                </View>
 
-                    <View style={styles.chatMessageArea}>
-                        {messages.map((msg: any) => (
-                            <View 
-                                key={msg.id} 
-                                style={msg.type === 'user' ? styles.chatBubbleRowUser : (msg.type === 'ai' ? styles.chatBubbleRowAI : styles.chatBubbleRowMentor)}
-                            >
-                                {msg.type !== 'user' && (
-                                    <View style={[styles.chatAvatar, { backgroundColor: msg.type === 'ai' ? primaryTeal : '#64748B' }]}>
-                                        {msg.type === 'ai' ? <Sparkles size={14} color="#FFF" /> : <User size={14} color="#FFF" />}
+                {loading ? (
+                    <ActivityIndicator size="large" color={primaryTeal} style={{ marginTop: 100 }} />
+                ) : error ? (
+                    <View style={styles.centerBox}>
+                        <Text style={{ color: 'red', textAlign: 'center', marginBottom: 20 }}>{error}</Text>
+                        <TouchableOpacity onPress={() => router.back()} style={[styles.retryBtn, { backgroundColor: primaryTeal }]}>
+                            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Go Back</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : !article ? (
+                    <Text style={{ color: theme.text, textAlign: 'center', marginTop: 100 }}>Article not found.</Text>
+                ) : (
+                    <MotiView 
+                        from={{ opacity: 0, translateY: 10 }}
+                        animate={{ opacity: 1, translateY: 0 }}
+                    >
+                        {/* Title Section */}
+                        <Text style={[styles.mainTitle, { color: theme.text }]}>{article.title}</Text>
+                        
+                        <View style={styles.metaRow}>
+                            <View style={styles.chipRow}>
+                                {(article.category || 'General').split('•').map((cat: string, i: number) => (
+                                    <View key={i} style={[styles.categoryChip, { backgroundColor: primaryTeal + '15' }]}>
+                                        <Text style={[styles.categoryChipText, { color: primaryTeal }]}>{cat.trim()}</Text>
                                     </View>
-                                )}
-                                <View style={[
-                                    msg.type === 'user' ? styles.bubbleUser : (msg.type === 'ai' ? styles.bubbleAI : styles.bubbleMentor),
-                                    msg.type === 'ai' && isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' },
-                                    msg.type === 'mentor' && isDarkMode && { backgroundColor: '#334155' }
-                                ]}>
-                                    {msg.label && <Text style={[styles.aiLabel, { color: primaryTeal }]}>{msg.label}</Text>}
-                                    <Text style={[
-                                        msg.type === 'user' ? styles.bubbleTextUser : (msg.type === 'ai' ? styles.bubbleTextAI : styles.bubbleTextMentor),
-                                        (msg.type === 'ai' || msg.type === 'mentor') && { color: theme.text }
-                                    ]}>
-                                        {msg.text}
-                                    </Text>
-                                </View>
-                                {msg.type === 'user' && (
-                                    <View style={[styles.chatAvatar, { backgroundColor: '#4A7C82' }]}><User size={14} color="#FFF" /></View>
-                                )}
+                                ))}
                             </View>
-                        ))}
-                    </View>
+                            <View style={styles.metaInfo}>
+                                <Clock size={12} color={theme.textSecondary} />
+                                <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                                    {article.publishedDate ? new Date(article.publishedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today'} • 2 min read
+                                </Text>
+                            </View>
+                        </View>
 
-                    <View style={[styles.chatInputArea, { 
-                        backgroundColor: isDarkMode ? '#1E293B' : '#FFF',
-                        borderTopColor: isDarkMode ? '#334155' : '#F1F5F9'
-                    }]}>
-                        <TextInput 
-                            placeholder="Ask follow-up question..." 
-                            style={[styles.chatInput, { color: theme.text }]}
-                            placeholderTextColor="#94A3B8"
-                            value={userInput}
-                            onChangeText={setUserInput}
-                            onSubmitEditing={handleSend}
-                            {...Platform.select({ web: { outlineStyle: 'none' } } as any)}
-                        />
-                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: primaryTeal }]} onPress={handleSend}>
-                            <Send size={18} color="#FFF" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
+                        {/* 1. Why in News */}
+                        <View style={[styles.sectionCard, { backgroundColor: theme.surface }]}>
+                            <View style={styles.sectionHeader}>
+                                <View style={[styles.indicator, { backgroundColor: primaryTeal }]} />
+                                <Text style={[styles.sectionTitle, { color: theme.text }]}>Why in News?</Text>
+                            </View>
+                            <Text style={[styles.sectionContent, { color: theme.text }]}>{article.whyInNews}</Text>
+                        </View>
 
-                {/* Recall Card */}
-                <MotiView 
-                    from={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    style={[styles.recallCard, { backgroundColor: isDarkMode ? '#1E293B' : '#111827', borderWidth: isDarkMode ? 1 : 0, borderColor: '#334155' }]}
-                >
-                    <Text style={styles.recallTitle}>Final Recall Check</Text>
-                    <TouchableOpacity style={[styles.startQuizBtn, { backgroundColor: primaryTeal }]}>
-                        <Text style={styles.startQuizText}>Start Quiz Now</Text>
-                        <ChevronRight size={18} color="#FFF" />
-                    </TouchableOpacity>
-                </MotiView>
+                        {/* 2. Background */}
+                        <View style={[styles.sectionCard, { backgroundColor: theme.surface }]}>
+                            <View style={styles.sectionHeader}>
+                                <View style={[styles.indicator, { backgroundColor: '#F59E0B' }]} />
+                                <Text style={[styles.sectionTitle, { color: theme.text }]}>Background</Text>
+                            </View>
+                            {(article.background || '').split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => (
+                                <View key={i} style={styles.bulletRow}>
+                                    <Text style={[styles.bullet, { color: primaryTeal }]}>•</Text>
+                                    <Text style={[styles.bulletText, { color: theme.textSecondary }]}>{line.trim().replace(/^•\s*/, '')}</Text>
+                                </View>
+                            ))}
+                        </View>
 
+                        {/* 3. Key Points */}
+                        <View style={[styles.sectionCard, { backgroundColor: theme.surface }]}>
+                            <View style={styles.sectionHeader}>
+                                <View style={[styles.indicator, { backgroundColor: '#10B981' }]} />
+                                <Text style={[styles.sectionTitle, { color: theme.text }]}>Key Highlights</Text>
+                            </View>
+                            {parseJSON(article.keyPoints).map((pt: string, i: number) => (
+                                <View key={i} style={styles.pointRow}>
+                                    <View style={[styles.pointBadge, { backgroundColor: primaryTeal + '15' }]}>
+                                        <Text style={[styles.pointBadgeText, { color: primaryTeal }]}>{i + 1}</Text>
+                                    </View>
+                                    <Text style={[styles.bulletText, { color: theme.text }]}>{pt}</Text>
+                                </View>
+                            ))}
+                        </View>
+
+                        {/* 4. Prelims Facts */}
+                        <View style={[styles.sectionCard, { backgroundColor: theme.surface }]}>
+                            <View style={styles.sectionHeader}>
+                                <View style={[styles.indicator, { backgroundColor: '#3B82F6' }]} />
+                                <Text style={[styles.sectionTitle, { color: theme.text }]}>Prelims Facts</Text>
+                            </View>
+                            <View style={styles.factGrid}>
+                                {parseJSON(article.prelimsFacts).map((fact: string, i: number) => (
+                                    <View key={i} style={[styles.factChip, { backgroundColor: isDarkMode ? '#1E293B' : '#F1F5F9' }]}>
+                                        <Text style={[styles.factChipText, { color: theme.text }]}>{fact}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
+
+                        {/* 5. Mains Angle */}
+                        <View style={[styles.sectionCard, { backgroundColor: isDarkMode ? '#1E293B' : '#F8FAFC', borderLeftWidth: 4, borderLeftColor: primaryTeal }]}>
+                            <Text style={[styles.mainsLabel, { color: primaryTeal }]}>Mains Perspective</Text>
+                            <Text style={[styles.mainsText, { color: theme.text }]}>
+                                <Text style={{ fontWeight: '800' }}>Q: </Text>{article.mainsAngle}
+                            </Text>
+                        </View>
+
+                        {/* 6. Quiz Section */}
+                        {mcqs.length > 0 && (
+                            <QuizSection mcqs={mcqs} primaryColor={primaryTeal} theme={theme} isDarkMode={isDarkMode} />
+                        )}
+
+                    </MotiView>
+                )}
             </ScrollView>
+        </View>
+    );
+}
+
+function QuizSection({ mcqs, primaryColor, theme, isDarkMode }: any) {
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    const [showResult, setShowResult] = useState(false);
+
+    const currentMCQ = mcqs[currentIndex];
+    if (!currentMCQ) return null;
+
+    const options = typeof currentMCQ.options === 'string' ? JSON.parse(currentMCQ.options) : (currentMCQ.options || []);
+
+    const handleSelect = (opt: string) => {
+        if (showResult) return;
+        setSelectedOption(opt);
+        setShowResult(true);
+    };
+
+    const next = () => {
+        if (currentIndex < mcqs.length - 1) {
+            setCurrentIndex(currentIndex + 1);
+            setSelectedOption(null);
+            setShowResult(false);
+        }
+    };
+
+    return (
+        <View style={[styles.quizBox, { backgroundColor: isDarkMode ? '#1E293B' : '#111827' }]}>
+            <View style={styles.quizTop}>
+                <Sparkles size={18} color="#F59E0B" />
+                <Text style={styles.quizTitle}>Daily Recall</Text>
+                <Text style={styles.quizCount}>{currentIndex + 1} / {mcqs.length}</Text>
+            </View>
+
+            <Text style={styles.questionText}>{currentMCQ.question}</Text>
+
+            <View style={styles.optionsContainer}>
+                {options.map((opt: string, i: number) => {
+                    const isCorrect = opt === currentMCQ.answer;
+                    const isSelected = opt === selectedOption;
+                    let bColor = isDarkMode ? '#334155' : '#374151';
+                    
+                    if (showResult) {
+                        if (isCorrect) bColor = '#065F46';
+                        else if (isSelected) bColor = '#7F1D1D';
+                    }
+
+                    return (
+                        <TouchableOpacity 
+                            key={i} 
+                            onPress={() => handleSelect(opt)}
+                            style={[styles.optionItem, { backgroundColor: bColor }]}
+                        >
+                            <Text style={styles.optionItemText}>{opt}</Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+
+            {showResult && (
+                <View style={styles.quizResultArea}>
+                    <Text style={[styles.resultMsg, { color: selectedOption === currentMCQ.answer ? '#34D399' : '#F87171' }]}>
+                        {selectedOption === currentMCQ.answer ? 'Correct Answer!' : 'Needs Review'}
+                    </Text>
+                    {currentIndex < mcqs.length - 1 && (
+                        <TouchableOpacity style={[styles.nextBtn, { backgroundColor: primaryColor }]} onPress={next}>
+                            <Text style={styles.nextBtnText}>Next Question</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
         </View>
     );
 }
@@ -209,78 +329,88 @@ export default function EditorialAnalyst() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     scrollContent: { 
-        paddingHorizontal: isWeb ? '18%' : 20, 
-        paddingTop: 20, 
-        paddingBottom: 60,
-        maxWidth: isWeb ? 1600 : '100%',
+        paddingHorizontal: isWeb ? (width > 1200 ? '25%' : '15%') : 16, 
+        paddingTop: isWeb ? 40 : 20, 
+        paddingBottom: 80,
+        maxWidth: isWeb ? 1400 : '100%',
         alignSelf: 'center',
         width: '100%'
     },
-    headerNavRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 12 },
-    backBtn: { padding: 4 },
-    breadcrumbContainer: { flexDirection: 'row', flex: 1 },
-    breadcrumbText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-    mainTitle: { fontSize: isWeb ? 32 : 24, fontWeight: '900', lineHeight: isWeb ? 40 : 32, marginBottom: 12 },
-    metaRow: { flexDirection: 'row', marginBottom: 25 },
-    metaLabel: { fontSize: 10, fontWeight: '700' },
+    headerNavRow: { flexDirection: 'row', alignItems: 'center', marginBottom: isWeb ? 30 : 20, gap: 12 },
+    backBtn: { width: isWeb ? 40 : 36, height: isWeb ? 40 : 36, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    breadcrumbContainer: { flex: 1 },
+    breadcrumbText: { fontSize: isWeb ? 13 : 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+    headerActions: { flexDirection: 'row', gap: isWeb ? 16 : 8 },
+    actionBtn: { padding: 6 },
+    centerBox: { marginTop: 100, alignItems: 'center', paddingHorizontal: 20 },
+    retryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
     
-    tabWrapper: { 
-        flexDirection: 'row', 
-        justifyContent: isWeb ? 'flex-start' : 'space-between',
-        gap: isWeb ? 40 : 10, 
-        borderBottomWidth: 1, 
-        marginBottom: 30 
+    mainTitle: { 
+        fontSize: isWeb ? (width > 1000 ? 38 : 32) : 24, 
+        fontWeight: '900', 
+        lineHeight: isWeb ? (width > 1000 ? 48 : 40) : 32, 
+        marginBottom: isWeb ? 24 : 16,
+        letterSpacing: -0.5
     },
-    tab: { paddingBottom: 10, paddingHorizontal: 4, minWidth: isWeb ? 0 : 80, alignItems: 'center' },
-    tabText: { fontSize: 12, fontWeight: '800' },
-    
-    bannerContainer: { width: '100%', height: isWeb ? 400 : 220, borderRadius: 24, overflow: 'hidden', marginBottom: 40 },
-    bannerImage: { width: '100%', height: '100%' },
-
-    chatBoxContainer: { 
-        borderWidth: 1, 
-        borderRadius: 24, 
-        overflow: 'hidden',
-        marginBottom: 40,
-        ...Platform.select({ web: { boxShadow: '0 10px 30px -10px rgba(0,0,0,0.1)' } })
-    },
-    chatBoxHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1 },
-    statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E', marginRight: 10 },
-    chatBoxHeaderTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1, marginRight: 6 },
-    chatMessageArea: { padding: isWeb ? 24 : 16, gap: 24 },
-    chatBubbleRowMentor: { flexDirection: 'row', gap: 12, alignItems: 'flex-end', width: '90%' },
-    chatBubbleRowAI: { flexDirection: 'row', gap: 12, alignItems: 'flex-end', alignSelf: 'flex-start', width: '90%' },
-    chatBubbleRowUser: { flexDirection: 'row', gap: 12, alignItems: 'flex-end', alignSelf: 'flex-end', justifyContent: 'flex-end', width: '90%' },
-    chatAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    bubbleMentor: { backgroundColor: '#F1F5F9', padding: 16, borderRadius: 18, borderBottomLeftRadius: 4, flexShrink: 1 },
-    bubbleAI: { backgroundColor: '#F0F9F9', padding: 16, borderRadius: 18, borderBottomLeftRadius: 4, flexShrink: 1, borderWidth: 1, borderColor: '#CCECEE' },
-    bubbleUser: { backgroundColor: '#2D5A61', padding: 16, borderRadius: 18, borderBottomRightRadius: 4, flexShrink: 1 },
-    bubbleTextMentor: { fontSize: 15, lineHeight: 22 },
-    bubbleTextAI: { fontSize: 15, lineHeight: 22, fontWeight: '500' },
-    bubbleTextUser: { fontSize: 15, color: '#FFF', lineHeight: 22 },
-    aiLabel: { fontSize: 9, fontWeight: '900', marginBottom: 6 },
-    chatInputArea: { flexDirection: 'row', padding: 12, borderTopWidth: 1, alignItems: 'center', gap: 10 },
-    chatInput: { flex: 1, height: 40, paddingHorizontal: 15, fontSize: 14 } as TextStyle,
-    sendButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-
-    recallCard: { 
-        borderRadius: 24, 
-        padding: 30, 
-        alignItems: 'center', 
+    metaRow: { 
+        marginBottom: isWeb ? 40 : 30, 
         flexDirection: isWeb ? 'row' : 'column', 
+        alignItems: isWeb ? 'center' : 'flex-start',
         justifyContent: 'space-between',
-        gap: isWeb ? 0 : 20
+        gap: 16 
     },
-    recallTitle: { color: '#FFF', fontSize: 20, fontWeight: '800', textAlign: isWeb ? 'left' : 'center' },
-    startQuizBtn: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        paddingHorizontal: 24, 
-        paddingVertical: 14, 
-        borderRadius: 14, 
-        gap: 8,
-        width: isWeb ? 'auto' : '100%' 
+    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1 },
+    categoryChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+    categoryChipText: { fontSize: isWeb ? 11 : 10, fontWeight: '800', textTransform: 'uppercase' },
+    metaInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    metaText: { fontSize: isWeb ? 14 : 12, fontWeight: '600' },
+
+    sectionCard: { 
+        padding: isWeb ? 28 : 20, 
+        borderRadius: 24, 
+        marginBottom: 20,
+        ...Platform.select({
+            web: { boxShadow: '0 4px 20px -10px rgba(0,0,0,0.05)' }
+        })
     },
-    startQuizText: { color: '#FFF', fontWeight: '800', fontSize: 15 }
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+    indicator: { width: 4, height: 20, borderRadius: 2 },
+    sectionTitle: { fontSize: isWeb ? 18 : 16, fontWeight: '800' },
+    sectionContent: { fontSize: isWeb ? 16 : 15, lineHeight: isWeb ? 26 : 24, opacity: 0.9 },
+    
+    bulletRow: { flexDirection: 'row', marginBottom: 10, gap: 12 },
+    bullet: { fontSize: 20, marginTop: -4 },
+    bulletText: { flex: 1, fontSize: isWeb ? 15 : 14, lineHeight: isWeb ? 24 : 22 },
+    
+    pointRow: { flexDirection: 'row', marginBottom: 14, gap: 14, alignItems: 'flex-start' },
+    pointBadge: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+    pointBadgeText: { fontSize: 13, fontWeight: '900' },
+    
+    factGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    factChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14 },
+    factChipText: { fontSize: isWeb ? 14 : 13, fontWeight: '600' },
+    
+    mainsLabel: { fontSize: isWeb ? 14 : 12, fontWeight: '900', textTransform: 'uppercase', marginBottom: 10, letterSpacing: 1 },
+    mainsText: { fontSize: isWeb ? 17 : 15, lineHeight: isWeb ? 28 : 24, fontStyle: 'italic' },
+
+    quizBox: { borderRadius: 32, padding: isWeb ? 40 : 24, marginTop: 30 },
+    quizTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
+    quizTitle: { color: '#FFF', fontSize: isWeb ? 22 : 18, fontWeight: '900', flex: 1 },
+    quizCount: { color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '700' },
+    questionText: { color: '#FFF', fontSize: isWeb ? 18 : 16, fontWeight: '700', lineHeight: isWeb ? 28 : 24, marginBottom: 30 },
+    optionsContainer: { 
+        flexDirection: isWeb && width > 800 ? 'row' : 'column', 
+        flexWrap: 'wrap', 
+        gap: 12 
+    },
+    optionItem: { 
+        padding: isWeb ? 20 : 16, 
+        borderRadius: 18,
+        width: isWeb && width > 800 ? '48.5%' : '100%'
+    },
+    optionItemText: { color: '#FFF', fontSize: isWeb ? 15 : 14, fontWeight: '600' },
+    quizResultArea: { marginTop: 30, alignItems: 'center', gap: 20 },
+    resultMsg: { fontSize: 16, fontWeight: '800' },
+    nextBtn: { paddingHorizontal: 30, paddingVertical: 16, borderRadius: 16 },
+    nextBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 }
 });

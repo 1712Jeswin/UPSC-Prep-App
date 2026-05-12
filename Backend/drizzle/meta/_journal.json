@@ -8,6 +8,20 @@
       "when": 1777978513825,
       "tag": "0000_many_vertigo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777993263101,
+      "tag": "0001_bright_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778052300896,
+      "tag": "0002_tiny_karnak",
+      "breakpoints": true
     }
   ]
 }

@@ -17,8 +17,13 @@ const PORT = process.env.PORT || 5000;
 app.use(cors()); // Simple CORS as requested
 app.use(express.json());
 
+import currentAffairsRoutes from "./src/modules/current-affairs/currentAffairs.routes.js";
+import upscEngineRoutes from "./src/modules/upsc-engine/upscEngine.routes.js";
+
 // Custom Auth Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/current-affairs", currentAffairsRoutes);
+app.use("/api/v2", upscEngineRoutes);
 
 // Better Auth handler (Standard Express 5 mount without wildcard)
 app.use("/api/auth", toNodeHandler(auth));

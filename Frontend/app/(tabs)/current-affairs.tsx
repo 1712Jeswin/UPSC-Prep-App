@@ -1,26 +1,61 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Dimensions, ActivityIndicator } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MotiView, MotiText } from 'moti';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import CategoryBadge from '../../components/CategoryBadge';
 
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
-
-const DAILY_NEWS = [
-    { id: '1', tag: 'GS II • POLITY', title: 'New Bill on Digital Data Protection: Impact on Privacy Rights', source: 'The Hindu', date: '15 Oct 2023', imageColor: '#2D5A6140' },
-    { id: '2', tag: 'GS III • ECONOMY', title: 'Understanding the Periodic Labour Force Survey Trends', source: 'Indian Express', date: '14 Oct 2023', imageColor: '#E8F3F130' },
-    { id: '3', tag: 'GS II • IR', title: 'India-Middle East-Europe Corridor: A Strategic Masterstroke?', source: 'LiveMint', date: '14 Oct 2023', imageColor: '#F4F7F630' },
-    { id: '4', tag: 'GS III • ENV', title: 'Carbon Border Adjustment Mechanism: Implications for India', source: 'The Hindu', date: '13 Oct 2023', imageColor: '#E2E8F030' }
-];
 
 export default function CurrentAffairs() {
     const { theme, isDarkMode } = useTheme();
     const router = useRouter();
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+    const [articles, setArticles] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [progress, setProgress] = useState<any>({ total: 0, completed: 0, percentage: 0, quizUnlocked: false });
+
+    useFocusEffect(
+        useCallback(() => {
+            let isActive = true;
+            const fetchData = async () => {
+                try {
+                    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/current-affairs/daily`);
+                    const json = await response.json();
+                    if (isActive && json.success) {
+                        setArticles(json.data.items);
+                    } else if (isActive) {
+                        setError(json.message);
+                    }
+                    
+                    const token = await AsyncStorage.getItem('accessToken');
+                    if (token) {
+                        const progRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/v2/current-affairs/today`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const progJson = await progRes.json();
+                        if (isActive && progJson.success && progJson.data?.progress) {
+                            setProgress(progJson.data.progress);
+                        }
+                    }
+                } catch (err: any) {
+                    if (isActive) setError(err.message || "Failed to load data");
+                } finally {
+                    if (isActive) setLoading(false);
+                }
+            };
+            fetchData();
+            return () => {
+                isActive = false;
+            };
+        }, [])
+    );
 
     // Dynamic brand color that adjusts brightness for readability
     const primaryTeal = isDarkMode ? '#5FA4AD' : '#2D5A61';
@@ -69,7 +104,7 @@ export default function CurrentAffairs() {
                     </View>
 
                     <View style={styles.layoutBody}>
-                        {/* Progress Card: Uses brand color but adjusts for Dark Mode depth */}
+                        {/* Progress Card: Reflects actual count */}
                         <MotiView
                             from={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -80,60 +115,92 @@ export default function CurrentAffairs() {
                             <View style={styles.progressBarBg}>
                                 <MotiView
                                     from={{ width: '0%' }}
-                                    animate={{ width: '60%' }}
+                                    animate={{ width: `${progress.percentage || 0}%` }}
                                     transition={{ type: 'timing', duration: 1000, delay: 500 }}
                                     style={[styles.progressBarFill, { backgroundColor: isDarkMode ? primaryTeal : '#FFF' }]}
                                 />
                             </View>
-                            <Text style={styles.progressText}>Read 2 more articles to hit your daily goal.</Text>
+                            <Text style={styles.progressText}>{progress.completed || 0} / {progress.total || 0} articles completed</Text>
                         </MotiView>
 
-                        <View style={styles.mainContent}>
-                            {DAILY_NEWS.map((item, index) => (
-                                <MotiView
-                                    key={item.id}
-                                    from={{ opacity: 0, translateY: 20 }}
-                                    animate={{ opacity: 1, translateY: 0 }}
-                                    transition={{ delay: 300 + (index * 100) }}
+                        {progress.quizUnlocked && (
+                            <MotiView
+                                from={{ opacity: 0, translateY: 10 }}
+                                animate={{ opacity: 1, translateY: 0 }}
+                                transition={{ delay: 300 }}
+                            >
+                                <TouchableOpacity 
+                                    style={[styles.quizButton, { backgroundColor: primaryTeal }]}
+                                    onPress={() => router.push('/upsc-quiz')}
                                 >
-                                    <TouchableOpacity
-                                        activeOpacity={0.9}
-                                        onPress={() => handlePress(item.id)}
-                                        {...(Platform.OS === 'web' ? {
-                                            onMouseEnter: () => setHoveredId(item.id),
-                                            onMouseLeave: () => setHoveredId(null)
-                                        } : {} as any)}
-                                        style={[
-                                            styles.newsCard,
-                                            {
-                                                backgroundColor: theme.surface,
-                                                borderColor: hoveredId === item.id ? primaryTeal : cardBorder
-                                            },
-                                            Platform.OS === 'web' && hoveredId === item.id && {
-                                                boxShadow: `0 8px 20px -6px ${primaryTeal}40`,
-                                                transform: [{ translateY: -4 }]
-                                            }
-                                        ]}
+                                    <Text style={styles.quizButtonText}>Take Today's Quiz</Text>
+                                </TouchableOpacity>
+                            </MotiView>
+                        )}
+
+                        <View style={styles.mainContent}>
+                            {loading ? (
+                                <ActivityIndicator size="large" color={primaryTeal} style={{ marginTop: 50 }} />
+                            ) : error ? (
+                                <Text style={{ color: 'red', textAlign: 'center', marginTop: 50 }}>{error}</Text>
+                            ) : articles.length === 0 ? (
+                                <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 50 }}>No articles available today.</Text>
+                            ) : (
+                                articles.map((item, index) => (
+                                    <MotiView
+                                        key={item.id}
+                                        from={{ opacity: 0, translateY: 20 }}
+                                        animate={{ opacity: 1, translateY: 0 }}
+                                        transition={{ delay: 300 + (index * 100) }}
                                     >
-                                        <View style={[styles.imageBox, { backgroundColor: item.imageColor }]} />
-                                        <View style={styles.cardContent}>
-                                            <View style={styles.cardHeader}>
-                                                <Text style={[styles.tagText, { color: primaryTeal }]}>{item.tag}  •  {item.date}</Text>
-                                            </View>
-                                            <Text style={[styles.newsTitle, { color: theme.text }]} numberOfLines={2}>
-                                                {item.title}
-                                            </Text>
-                                            <View style={styles.cardFooter}>
-                                                <Text style={[styles.sourceText, { color: theme.textSecondary }]}>{item.source}</Text>
-                                                <View style={styles.analyzeBtn}>
-                                                    <Text style={[styles.analyzeText, { color: primaryTeal }]}>Analyze</Text>
-                                                    <ChevronRight size={14} color={primaryTeal} />
+                                        <TouchableOpacity
+                                            activeOpacity={0.9}
+                                            onPress={() => handlePress(item.id)}
+                                            {...(Platform.OS === 'web' ? {
+                                                onMouseEnter: () => setHoveredId(item.id),
+                                                onMouseLeave: () => setHoveredId(null)
+                                            } : {} as any)}
+                                            style={[
+                                                styles.newsCard,
+                                                {
+                                                    backgroundColor: theme.surface,
+                                                    borderColor: hoveredId === item.id ? primaryTeal : cardBorder
+                                                },
+                                                Platform.OS === 'web' && hoveredId === item.id && {
+                                                    boxShadow: `0 8px 20px -6px ${primaryTeal}40`,
+                                                    transform: [{ translateY: -4 }]
+                                                }
+                                            ]}
+                                        >
+                                            <CategoryBadge category={item.category || 'General'} />
+                                            <View style={styles.cardContent}>
+                                                <View style={styles.cardHeader}>
+                                                    <View style={styles.chipRow}>
+                                                        {(item.category || 'General').split('•').map((cat: string, i: number) => (
+                                                            <View key={i} style={[styles.categoryChip, { backgroundColor: primaryTeal + '15' }]}>
+                                                                <Text style={[styles.categoryChipText, { color: primaryTeal }]}>{cat.trim()}</Text>
+                                                            </View>
+                                                        ))}
+                                                    </View>
+                                                    <Text style={[styles.dateText, { color: theme.textSecondary }]}>
+                                                        {item.publishedDate ? new Date(item.publishedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Today'} • ⏱ 2 min read
+                                                    </Text>
+                                                </View>
+                                                <Text style={[styles.newsTitle, { color: theme.text }]} numberOfLines={2}>
+                                                    {item.title}
+                                                </Text>
+                                                <View style={styles.cardFooter}>
+                                                    <Text style={[styles.sourceText, { color: theme.textSecondary }]}>{item.sourceName || 'PIB'}</Text>
+                                                    <View style={styles.analyzeBtn}>
+                                                        <Text style={[styles.analyzeText, { color: primaryTeal }]}>Read Analysis</Text>
+                                                        <ChevronRight size={14} color={primaryTeal} />
+                                                    </View>
                                                 </View>
                                             </View>
-                                        </View>
-                                    </TouchableOpacity>
-                                </MotiView>
-                            ))}
+                                        </TouchableOpacity>
+                                    </MotiView>
+                                ))
+                            )}
                         </View>
                     </View>
                 </SafeAreaView>
@@ -169,9 +236,12 @@ const styles = StyleSheet.create({
             android: { elevation: 2 }
         })
     },
-    imageBox: { width: isMobile ? 70 : 90, height: isMobile ? 70 : 90, borderRadius: 12 },
     cardContent: { flex: 1, marginLeft: 15, justifyContent: 'center' },
-    cardHeader: { marginBottom: 4 },
+    cardHeader: { marginBottom: 6 },
+    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+    categoryChip: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+    categoryChipText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+    dateText: { fontSize: 10, fontWeight: '600' },
     tagText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
     newsTitle: { fontSize: isMobile ? 15 : 18, fontWeight: '700', lineHeight: isMobile ? 20 : 24 },
     cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
@@ -182,5 +252,20 @@ const styles = StyleSheet.create({
     sideTitleWhite: { color: '#FFF', fontSize: 18, fontWeight: '800' },
     progressBarBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, overflow: 'hidden' },
     progressBarFill: { height: '100%', borderRadius: 10 },
-    progressText: { color: '#FFF', fontSize: 13, opacity: 0.9, fontWeight: '500' }
+    progressText: { color: '#FFF', fontSize: 13, opacity: 0.9, fontWeight: '500' },
+    quizButton: {
+        paddingVertical: 14,
+        paddingHorizontal: 24,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 5,
+        marginBottom: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+        elevation: 3,
+    },
+    quizButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 }
 });

@@ -9,6 +9,7 @@ import {
   Platform,
   Image,
   useWindowDimensions,
+  ActivityIndicator,
 } from "react-native";
 import {
   ChevronRight,
@@ -29,6 +30,30 @@ export default function HomeScreen() {
   const userName = "Buddy";
 
   const isDesktop = width >= 1024;
+
+  const [articles, setArticles] = React.useState<any[]>([]);
+  const [loadingArticles, setLoadingArticles] = React.useState(true);
+
+  React.useEffect(() => {
+    let isActive = true;
+    const fetchArticles = async () => {
+      try {
+        const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/current-affairs/daily`);
+        const json = await response.json();
+        if (isActive && json.success) {
+          setArticles(json.data.items);
+        }
+      } catch (err) {
+        console.error("Failed to load articles on home screen", err);
+      } finally {
+        if (isActive) setLoadingArticles(false);
+      }
+    };
+    fetchArticles();
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
 
   const fadeText = useRef(new Animated.Value(0)).current;
@@ -291,36 +316,42 @@ export default function HomeScreen() {
               </Text>
             </View>
             <View style={responsiveStyles.affairsGrid}>
-              {[1, 2, 3].map((item) => (
-                <TouchableOpacity
-                  key={item}
-                  onPress={() => router.push("/current-affairs")}
-                  style={[
-                    styles.affairCard,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <View style={[styles.dateBadge, { backgroundColor: isDarkMode ? theme.surfaceAlt : "#E0F2F1" }]}>
-                      <Text style={[styles.dateText, { color: isDarkMode ? theme.primary : "#00796B" }]}>
-                        March {item + 1}, 2026
+              {loadingArticles ? (
+                <ActivityIndicator size="small" color={theme.primary} style={{ marginVertical: 20, alignSelf: 'center', width: '100%' }} />
+              ) : articles.length === 0 ? (
+                <Text style={{ color: theme.textSecondary, textAlign: 'center', marginVertical: 20, width: '100%' }}>No articles available today.</Text>
+              ) : (
+                articles.slice(0, 3).map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => router.push({ pathname: "/editorial-analyst", params: { id: item.id } })}
+                    style={[
+                      styles.affairCard,
+                      {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={[styles.dateBadge, { backgroundColor: isDarkMode ? theme.surfaceAlt : "#E0F2F1" }]}>
+                        <Text style={[styles.dateText, { color: isDarkMode ? theme.primary : "#00796B" }]}>
+                          {item.publishedDate ? new Date(item.publishedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Today'}
+                        </Text>
+                      </View>
+                      <Text style={[styles.affairTitle, { color: theme.text }]} numberOfLines={3}>
+                        {item.title}
                       </Text>
                     </View>
-                    <Text style={[styles.affairTitle, { color: theme.text }]}>
-                      Important Editorial Analysis: India's Foreign Policy
-                    </Text>
-                  </View>
-                  <View style={styles.cardFooter}>
-                    <Text style={{ color: theme.primary, fontWeight: "700" }}>
-                      Read Now
-                    </Text>
-                    <ChevronRight size={16} color={theme.primary} />
-                  </View>
-                </TouchableOpacity>
-              ))}
+                    <View style={styles.cardFooter}>
+                      <Text style={{ color: theme.primary, fontWeight: "700" }}>
+                        Read Now
+                      </Text>
+                      <ChevronRight size={16} color={theme.primary} />
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
             </View>
           </View>
         </View>

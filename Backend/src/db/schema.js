@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, unique } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
     id: text("id").primaryKey(),
@@ -44,4 +44,30 @@ export const verification = pgTable("verification", {
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
+});
+
+export const article = pgTable("article", {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    category: text("category"),
+    sourceLink: text("source_link"),
+    publishedDate: timestamp("published_date"),
+    whyInNews: text("why_in_news"),
+    background: text("background"),
+    keyPoints: text("key_points"), // JSON string
+    prelimsFacts: text("prelims_facts"), // JSON string
+    mainsAngle: text("mains_angle"),
+    sourceName: text("source_name"),
+    createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+    uniqueSourceDate: unique().on(table.sourceLink, table.publishedDate)
+}));
+
+export const mcq = pgTable("mcq", {
+    id: text("id").primaryKey(),
+    articleId: text("article_id").references(() => article.id),
+    question: text("question").notNull(),
+    options: text("options"), // JSON string
+    answer: text("answer"),
+    createdAt: timestamp("created_at").defaultNow(),
 });
