@@ -48,27 +48,22 @@ export default function TermsOfService() {
                     title="1. Agreement to Terms"
                     content="By accessing or using Ethora, you agree to be bound by these Terms of Service. Ethora is a dedicated platform designed for UPSC aspirants to track, manage, and optimize their preparation journey."
                 />
-
                 <Section
                     title="2. Account Responsibility"
                     content="You are responsible for maintaining the confidentiality of your account credentials. Any study data generated under your profile is your responsibility. Ethora reserves the right to terminate accounts that violate UPSC preparation ethics or engage in content piracy."
                 />
-
                 <Section
                     title="3. Data & Privacy"
                     content="Your study data is processed to provide personalized analytics. While Ethora offers an 'Incognito Study Mode' to pause tracking, essential system data is still collected as outlined in our Privacy Policy to ensure app stability."
                 />
-
                 <Section
                     title="4. Intellectual Property"
                     content="All software, UI designs, and proprietary study tools provided by Ethora are the exclusive property of Ethora. You may not reverse-engineer, redistribute, or use our assets for commercial purposes without written consent."
                 />
-
                 <Section
                     title="5. User Backups"
                     content="The 'Backup Study Data' feature allows you to export your progress. Ethora is not liable for data loss occurring due to user deletion or failure to perform regular exports of local study records."
                 />
-
                 <View style={s.footer}>
                     <ShieldIcon size={16} color={theme.textTertiary} />
                     <Text style={[s.footerText, { color: theme.textTertiary }]}>

@@ -1,19 +1,27 @@
+import { Platform } from 'react-native';
+
+if (Platform.OS !== 'web') {
+  require('react-native-get-random-values');
+  require('react-native-url-polyfill/auto');
+  const { ReadableStream } = require('web-streams-polyfill');
+
+  if (typeof (global as any).ReadableStream === 'undefined') {
+    (global as any).ReadableStream = ReadableStream;
+  }
+}
+
+import '../global.css';
 import { Stack } from 'expo-router';
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import colors from '@/constants/colors';
-// 1. Import the Provider and the Hook
 import { ThemeProvider, useTheme } from '../context/ThemeContext'; 
 
-// This inner component is needed because useTheme() 
-// must be used inside the ThemeProvider
 function RootLayoutContent() {
     const { isDarkMode, theme } = useTheme();
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
-            {/* 2. Status bar now reacts to the theme */}
             <StatusBar style={isDarkMode ? "light" : "dark"} />
             
             <Stack
@@ -35,7 +43,6 @@ function RootLayoutContent() {
     );
 }
 
-// 5. Wrap everything in the Provider
 export default function RootLayout() {
     return (
         <ThemeProvider>
@@ -50,4 +57,4 @@ const styles = StyleSheet.create({
         // Removed the static background here so it can be dynamic above
         // paddingBottom: 20, 
     },
-});
+}); 
