@@ -51,7 +51,22 @@ export default function LoginScreen() {
             });
             const result = await res.json();
             if (result.success) {
-                await AsyncStorage.setItem('accessToken', result.data.accessToken);
+                const token = result.data.accessToken;
+                await AsyncStorage.setItem('accessToken', token);
+                
+                // Fetch the user profile to capture the user's role (admin vs student)
+                try {
+                    const meRes = await fetch(`${API_URL}/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const meResult = await meRes.json();
+                    if (meResult.success && meResult.data?.user) {
+                        await AsyncStorage.setItem('user_profile', JSON.stringify(meResult.data.user));
+                    }
+                } catch (meError) {
+                    console.error("Failed to load user profile upon login:", meError);
+                }
+
                 router.replace('/(tabs)');
             } else {
                 Alert.alert("Login Failed", result.message || "Invalid credentials");
