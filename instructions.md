@@ -98,8 +98,7 @@ All files are created inside the `Backend/` folder. Every path in this document 
 
 ```
 Node.js        >= 20.x
-MongoDB        >= 6.x  (Atlas or local)
-Redis          >= 7.x  (Upstash or local)
+PostgreSQL     >= 14.x (Neon or local)
 npm            >= 10.x
 ```
 
@@ -128,44 +127,20 @@ NODE_ENV=development
 PORT=5000
 
 # Database
-MONGO_URI=mongodb+srv://<user>:<pass>@cluster.mongodb.net/upsc_db
+DATABASE_URL=postgresql://user:pass@host/db
 
-# Redis
-REDIS_URL=redis://localhost:6379
+# Better Auth
+BETTER_AUTH_SECRET=<min-32-char-random-string>
+BETTER_AUTH_URL=http://localhost:5000
 
 # JWT
-JWT_ACCESS_SECRET=<min-64-char-random-string>
-JWT_REFRESH_SECRET=<different-min-64-char-random-string>
-JWT_ACCESS_EXPIRY=15m
-JWT_REFRESH_EXPIRY=7d
+JWT_SECRET=<min-32-char-random-string>
 
-# Bcrypt
-BCRYPT_ROUNDS=12
-
-# Cookies
-COOKIE_SECRET=<min-32-char-random-string>
+# Gemini API
+GEMINI_API_KEY=<your_api_key>
 
 # CORS — comma-separated allowed origins
 CORS_ORIGINS=http://localhost:3000,http://localhost:8081
-
-# OTP
-OTP_EXPIRY_MINUTES=10
-OTP_MAX_ATTEMPTS=3
-
-# Rate limits
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX=100
-OTP_RATE_LIMIT_MAX=3
-
-# Email (Resend)
-RESEND_API_KEY=re_xxxx
-
-# Push (FCM)
-FCM_SERVER_KEY=xxxx
-
-# Payment (Razorpay)
-RAZORPAY_KEY_ID=xxxx
-RAZORPAY_KEY_SECRET=xxxx
 ```
 
 > The server will **refuse to start** if any required variable is missing.
@@ -180,8 +155,6 @@ npm run dev
 Expected output:
 ```
 [env]    ✓ Environment validated
-[db]     ✓ MongoDB connected
-[redis]  ✓ Redis connected
 [server] ✓ Listening on port 5000
 ```
 
@@ -195,59 +168,39 @@ All files live inside `Backend/`. The structure is:
 Backend/
 ├── src/
 │   ├── config/
-│   │   ├── db.js                     ← mongoose.connect() with retry
-│   │   ├── redis.js                  ← ioredis client singleton
-│   │   └── env.js                    ← Zod env schema, validated at startup
-│   ├── middlewares/
-│   │   ├── auth.middleware.js         ← verifyToken (JWT)
-│   │   ├── role.middleware.js         ← checkRole(...roles)
-│   │   ├── subscription.middleware.js ← requirePremium
-│   │   ├── rateLimiter.middleware.js
-│   │   ├── asyncHandler.js            ← wraps async controllers
-│   │   └── error.middleware.js        ← centralized error handler
+│   │   └── env.js                        ← Zod env validation
+│   ├── db/
+│   │   ├── index.js                      ← Single Drizzle + Pool instance
+│   │   └── schema.js                     ← All Drizzle table definitions + indexes
+│   ├── shared/
+│   │   ├── middleware/
+│   │   │   ├── asyncHandler.js
+│   │   │   ├── auth.middleware.js
+│   │   │   ├── role.middleware.js
+│   │   │   ├── rateLimiter.middleware.js
+│   │   │   ├── validate.middleware.js     ← Zod request validation
+│   │   │   └── error.middleware.js        ← Global error handler
+│   │   ├── errors/
+│   │   │   └── AppError.js               ← Error class hierarchy
+│   │   ├── utils/
+│   │   │   ├── apiResponse.js            ← Standardized response helpers
+│   │   │   └── logger.js                 ← Pino structured logger
+│   │   └── constants/
+│   │       └── httpStatus.js
 │   ├── modules/
 │   │   ├── auth/
 │   │   │   ├── auth.routes.js
 │   │   │   ├── auth.controller.js
 │   │   │   ├── auth.service.js
-│   │   │   └── auth.validation.js
-│   │   ├── users/
-│   │   ├── courses/
-│   │   ├── exams/
-│   │   ├── current-affairs/
-│   │   ├── gamification/
-│   │   ├── subscriptions/
-│   │   ├── notifications/
-│   │   ├── ai-analyst/
+│   │   │   └── auth.schema.js            ← Zod validation schemas
+│   │   ├── articles/
+│   │   ├── quizzes/
 │   │   └── admin/
-│   ├── models/
-│   │   ├── User.model.js
-│   │   ├── Profile.model.js
-│   │   ├── UserStats.model.js
-│   │   ├── Article.model.js
-│   │   ├── ChatSession.model.js
-│   │   ├── Course.model.js
-│   │   ├── Lesson.model.js
-│   │   ├── Quiz.model.js
-│   │   ├── Question.model.js
-│   │   ├── Submission.model.js
-│   │   ├── Progress.model.js
-│   │   ├── Achievement.model.js
-│   │   └── Subscription.model.js
-│   ├── utils/
-│   │   ├── apiResponse.js             ← sendSuccess() + sendError()
-│   │   ├── apiError.js                ← AppError class
-│   │   ├── jwt.utils.js
-│   │   ├── otp.utils.js
-│   │   ├── paginate.utils.js          ← hard cap at limit: 50
-│   │   └── logger.js                  ← Winston
-│   ├── jobs/
-│   │   ├── notification.job.js
-│   │   └── streakReset.job.js
-│   ├── routes/
-│   │   └── index.js                   ← mounts all module routes
-│   └── app.js                         ← Express setup, global middleware
-├── server.js                          ← entry: env → db → app → listen
+│   ├── lib/
+│   │   └── auth.js                        ← Better Auth config
+│   └── app.js                             ← Express app setup (middleware chain)
+├── server.js                              ← Entry: env validate → db → app.listen()
+├── drizzle.config.js
 ├── .env.example
 └── package.json                       ← "type": "module"
 ```
@@ -261,9 +214,9 @@ Module folder pattern — every module contains exactly these four files:
   <module>.validation.js   ← Zod schemas for this module
 ```
 
-**Shared models** → `src/models/` only, never inside a module folder.
-**Shared utilities** → `src/utils/` only.
-**Cross-cutting middleware** → `src/middlewares/` only.
+**Database schema** → `src/db/schema.js` only, never inside a module folder.
+**Shared utilities** → `src/shared/utils/` only.
+**Cross-cutting middleware** → `src/shared/middleware/` only.
 
 ---
 
@@ -274,61 +227,21 @@ Module folder pattern — every module contains exactly these four files:
 Build in this exact order. Nothing else before this is complete.
 
 1. `src/config/env.js` — Zod parse of all env vars. Export a typed `config` object. Server must not start if any required var is missing.
-2. `src/config/db.js` — `mongoose.connect()` with retry logic and connection event logging.
-3. `src/config/redis.js` — `ioredis` singleton client.
-4. `src/utils/apiResponse.js` — `sendSuccess(res, data, message, statusCode=200)` and `sendError(res, message, statusCode=500, errors=[])`. Both must produce the locked response shape.
-5. `src/utils/apiError.js` — `class AppError extends Error { constructor(statusCode, message, errors=[]) { ... this.isOperational = true } }`.
-6. `src/utils/logger.js` — Winston logger with file + console transports.
-7. `src/middlewares/asyncHandler.js` — `export const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)`.
-8. `src/middlewares/error.middleware.js` — catches `AppError` and unknown errors, logs server-side, returns structured JSON. Never leaks stack in production.
-9. `src/app.js` — register Helmet, CORS, Morgan, body parsers (10kb limit), `express-mongo-sanitize`, routes, error handler.
-10. `server.js` — import `env.js` first, then `db.js`, then `app.js`, then `app.listen()`.
+2. `src/shared/utils/apiResponse.js` — `sendSuccess(res, data, message, statusCode=200)` and `sendError(res, message, statusCode=500, errors=[])`. Both must produce the locked response shape.
+3. `src/shared/errors/AppError.js` — `class AppError extends Error { constructor(statusCode, message, errors=[]) { ... this.isOperational = true } }`.
+4. `src/shared/utils/logger.js` — Pino structured logger.
+5. `src/shared/middleware/asyncHandler.js` — `export const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)`.
+6. `src/shared/middleware/error.middleware.js` — catches `AppError` and unknown errors, logs server-side, returns structured JSON. Never leaks stack in production.
+7. `src/app.js` — register Helmet, CORS, body parsers (10kb limit), Better Auth handler, routes, error handler.
+8. `server.js` — import `env.js` first, then `app.js`, then `app.listen()`.
 
-### Phase 2 — Models
+### Phase 2 — Database Schema
 
-Create all Mongoose schemas in `src/models/`. Add indexes on every frequently queried field.
+Create all Drizzle schemas in `src/db/schema.js`. Add indexes on every frequently queried field. Run migrations using `npx drizzle-kit generate` and `npx drizzle-kit push`.
 
-- [ ] `User.model.js` — `email` (unique index), `passwordHash` (excluded from default queries via `select: false`), `role` (enum: STUDENT/INSTRUCTOR/ADMIN), `status` (ACTIVE/INACTIVE/SUSPENDED), `refreshTokenHash`, `emailVerified`, `lastLoginAt`
-- [ ] `Profile.model.js` — `user` (unique ref → User), `fullName`, `targetYear`, `optionalSubject`, `bio`, `attemptCount`, `dailyGoalHours`, `homeState`, `avatarUrl`
-- [ ] `UserStats.model.js` — `user` (unique ref → User), `xp`, `level`, `currentStreak`, `highestStreak`, `lastActivityDate`, `articlesRead`, `recallRatePercentage`
-- [ ] `Article.model.js` — `title`, `content`, `tag` (index), `source`, `imageColor`, `publishedDate` (desc index), `isPublished`
-- [ ] `ChatSession.model.js` — `user` + `article` (compound index), `messages[]` with `{ role, text, timestamp }`
-- [ ] `Course.model.js` — `title`, `description`, `totalModules`, `createdBy` (ref → User), `isPublished`
-- [ ] `Lesson.model.js` — `course` (ref, index), `title`, `orderIndex`, `content`, `duration`
-- [ ] `Quiz.model.js` — `course` or `lesson` ref, `title`, `passingScore`, `totalQuestions`
-- [ ] `Question.model.js` — `quiz` (ref, index), `text`, `options[]`, `correctOptionIndex` (select: false), `explanation`
-- [ ] `Submission.model.js` — `student` + `quiz` (compound index), `answers[]`, `score`, `passed`, `attemptedAt`
-- [ ] `Progress.model.js` — `student` + `course` (compound unique index), `completedLessons[]`, `completionPercentage`
-- [ ] `Achievement.model.js` — `user` (index), `badgeId`, `earnedAt`
-- [ ] `Subscription.model.js` — `student` (index), `planType`, `status`, `startDate`, `expiryDate`, `paymentRef`
+### Phase 3 — Authentication (Better Auth)
 
-All models must have a `toJSON` transform that deletes `passwordHash`, `refreshTokenHash`, and `__v`.
-
-### Phase 3 — Authentication
-
-Implement in this exact order:
-
-1. `auth.validation.js` — Zod schemas: `signupSchema`, `loginSchema`
-2. `auth.service.js` — `signup()`, `login()`, `refreshTokens()`, `logout()`
-3. `auth.controller.js` — calls service, sets cookie, calls `sendSuccess()`
-4. `src/middlewares/auth.middleware.js` — `verifyToken`: reads `Authorization: Bearer` header, verifies JWT, confirms user still exists and is ACTIVE, attaches `req.user`
-5. `src/middlewares/role.middleware.js` — `checkRole(...roles)`: checks `req.user.role` against allowed list
-6. `src/middlewares/subscription.middleware.js` — `requirePremium`: queries `Subscription` for ACTIVE + non-expired record
-7. `auth.routes.js` — mount all four auth routes
-
-Refresh token cookie settings:
-```js
-{
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-  path: '/api/v1/auth',
-  signed: true,
-}
-```
-
-On signup: auto-create empty `Profile` and `UserStats` documents in the same operation as the `User` document.
+Configure Better Auth in `src/lib/auth.js` with plugins and JWT configuration. Expose it through `src/app.js`. Implement route protection in `src/shared/middleware/auth.middleware.js` using Better Auth session validation.
 
 ### Phase 4 — Current Affairs + AI Analyst
 
@@ -411,9 +324,9 @@ export const login = asyncHandler(async (req, res) => {
 ```js
 export const login = async (body) => {
   const { email, password } = loginSchema.parse(body);
-  const user = await User.findOne({ email }).select('+passwordHash');
+  const user = await db.query.user.findFirst({ where: eq(schema.user.email, email) });
   if (!user) throw new AppError(401, 'Invalid credentials');
-  const match = await bcrypt.compare(password, user.passwordHash);
+  const match = await bcrypt.compare(password, user.password);
   if (!match) throw new AppError(401, 'Invalid credentials');
   const accessToken = signAccessToken({ userId: user._id, role: user.role });
   return { accessToken, user };
@@ -422,14 +335,8 @@ export const login = async (body) => {
 
 ### Model — schema + toJSON only
 ```js
-userSchema.set('toJSON', {
-  transform: (doc, ret) => {
-    delete ret.passwordHash;
-    delete ret.refreshTokenHash;
-    delete ret.__v;
-    return ret;
-  },
-});
+// Drizzle models don't have toJSON, handle selection in queries
+
 ```
 
 ---
@@ -520,8 +427,7 @@ export const errorHandler = (err, req, res, next) => {
 
 - Run with **PM2** or Docker — never bare `node server.js` in production
 - Set `NODE_ENV=production` — disables stack traces in error responses
-- MongoDB: **Atlas** with IP allowlist + dedicated `readWrite` user (not root)
-- Redis: **Upstash** or private instance — never expose publicly
+- PostgreSQL: **Neon DB** or private instance.
 - Reverse-proxy through **Nginx/Caddy** — never expose Node on port 80/443 directly
 - TLS via Let's Encrypt or Caddy auto-TLS
 - Set `app.set('trust proxy', 1)` if behind Nginx

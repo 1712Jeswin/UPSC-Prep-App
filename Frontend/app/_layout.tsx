@@ -1,5 +1,13 @@
 import { Platform } from 'react-native';
 
+const { Buffer } = require('buffer');
+if (typeof global !== 'undefined' && typeof (global as any).Buffer === 'undefined') {
+  (global as any).Buffer = Buffer;
+}
+if (typeof window !== 'undefined' && typeof (window as any).Buffer === 'undefined') {
+  (window as any).Buffer = Buffer;
+}
+
 if (Platform.OS !== 'web') {
   require('react-native-get-random-values');
   require('react-native-url-polyfill/auto');
@@ -38,6 +46,7 @@ function RootLayoutContent() {
                 <Stack.Screen name="splash" options={{ headerShown: false }} />
                 {/* 4. Added settings to stack if it wasn't there */}
                 <Stack.Screen name="settings" options={{ headerShown: false }} />
+                <Stack.Screen name="admin" options={{ headerShown: false }} />
             </Stack>
         </View>
     );

@@ -11,6 +11,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
@@ -60,6 +61,22 @@ export default function SubjectFilesScreen() {
     const [isUploading, setIsUploading] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [openingFileId, setOpeningFileId] = useState<string | null>(null);
+    const [userRole, setUserRole] = useState<'student' | 'admin'>('student');
+
+    useEffect(() => {
+        const checkRole = async () => {
+            try {
+                const savedData = await AsyncStorage.getItem('user_profile');
+                if (savedData) {
+                    const parsed = JSON.parse(savedData);
+                    setUserRole(parsed.role || 'student');
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        };
+        checkRole();
+    }, []);
 
     const fetchFiles = async () => {
         try {
@@ -225,16 +242,18 @@ export default function SubjectFilesScreen() {
                                     : `${files.length} file${files.length !== 1 ? 's' : ''} available`}
                             </Text>
                         </View>
-                        <TouchableOpacity
-                            onPress={handleAddFile}
-                            disabled={isUploading}
-                            style={[styles.addFileBtn, { backgroundColor: isUploading ? theme.primary + '90' : theme.primary }]}
-                        >
-                            {isUploading
-                                ? <ActivityIndicator size="small" color="#fff" />
-                                : (<><Plus size={16} color="#fff" /><Text style={styles.addFileBtnText}>Upload</Text></>)
-                            }
-                        </TouchableOpacity>
+                        {userRole === 'admin' && (
+                            <TouchableOpacity
+                                onPress={handleAddFile}
+                                disabled={isUploading}
+                                style={[styles.addFileBtn, { backgroundColor: isUploading ? theme.primary + '90' : theme.primary }]}
+                            >
+                                {isUploading
+                                    ? <ActivityIndicator size="small" color="#fff" />
+                                    : (<><Plus size={16} color="#fff" /><Text style={styles.addFileBtnText}>Upload</Text></>)
+                                }
+                            </TouchableOpacity>
+                        )}
                     </View>
 
                     {/* ── Upload progress banner ── */}

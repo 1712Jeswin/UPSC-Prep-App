@@ -1,8 +1,9 @@
 import { Tabs, router, usePathname, Link } from "expo-router";
-import { Home, BookOpen, Newspaper, PenTool, User, LayoutGrid, Search, Flame, Target, CheckCircle2 } from "lucide-react-native";
-import React, { useState } from "react";
+import { Home, BookOpen, Newspaper, PenTool, User, LayoutGrid, Search, ShieldCheck } from "lucide-react-native";
+import React, { useState, useEffect } from "react";
 import { Platform, View, Text, StyleSheet, TouchableOpacity, TextInput, useWindowDimensions, ScrollView } from "react-native";
 import { useTheme } from "../../context/ThemeContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const isWeb = Platform.OS === 'web';
 
@@ -31,27 +32,48 @@ function GlobalHeader() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [hoveredNavIndex, setHoveredNavIndex] = useState<number | null>(null);
+    const [userRole, setUserRole] = useState<'student' | 'admin' | null>(null);
+
+    useEffect(() => {
+        const checkRole = async () => {
+            try {
+                const savedData = await AsyncStorage.getItem('user_profile');
+                if (savedData) {
+                    const parsed = JSON.parse(savedData);
+                    setUserRole(parsed.role || 'student');
+                }
+            } catch (e) {}
+        };
+        checkRole();
+    }, []);
 
     const filteredResults = SEARCH_DATABASE.filter(item =>
         item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.type.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const isAdmin = userRole === 'admin';
+
     return (
         <View style={[styles.headerContainer, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
             <View style={styles.headerContent}>
 
-                {/* 1. LEFT: Logo */}
+                {/* 1. LEFT: Logo / Title */}
                 <View style={styles.sideSection}>
                     <Link href="/" asChild>
-                        <TouchableOpacity>
+                        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Text style={[styles.logoText, { color: isDarkMode ? '#FFFFFF' : '#2D5A61' }]}>Ethora</Text>
+                            {isAdmin && (
+                                <View style={{ backgroundColor: theme.primary + '20', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: theme.primary }}>
+                                    <Text style={{ color: theme.primary, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>ADMIN</Text>
+                                </View>
+                            )}
                         </TouchableOpacity>
                     </Link>
                 </View>
 
-                {/* 2. CENTER: Web Navigation (Centered) */}
-                {isWeb && (
+                {/* 2. CENTER: Web Navigation (Hidden for Admins) */}
+                {isWeb && !isAdmin && (
                     <View style={styles.centerSection}>
                         <View style={styles.webNav}>
                             {NAV_LINKS.map((item, index) => {
@@ -81,60 +103,71 @@ function GlobalHeader() {
                     </View>
                 )}
 
-                {/* 3. RIGHT: Search & Profile (Mobile & Web) */}
+                {/* If Admin on Web, show a neat centralized title */}
+                {isWeb && isAdmin && (
+                    <View style={styles.centerSection}>
+                        <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800', letterSpacing: 0.5 }}>
+                            WORKSPACE MANAGEMENT CONSOLE
+                        </Text>
+                    </View>
+                )}
+
+                {/* 3. RIGHT: Search & Profile (Mobile & Web) - (Search hidden for Admins) */}
                 <View style={[styles.sideSection, { alignItems: 'flex-end', zIndex: 999 }]}>
                     <View style={styles.headerRight}>
-                        <View style={{ position: 'relative', zIndex: 1000 }}>
-                            <View style={[styles.searchBar, { backgroundColor: '#F5F7F8' }]}>
-                                <Search size={16} color="#9BA4AD" />
-                                <TextInput
-                                    placeholder="Search..."
-                                    style={styles.searchInput}
-                                    placeholderTextColor="#9BA4AD"
-                                    value={searchQuery}
-                                    onChangeText={setSearchQuery}
-                                    onFocus={() => setIsSearchFocused(true)}
-                                    onBlur={() => {
-                                        // Give time for onPress on results to register
-                                        setTimeout(() => setIsSearchFocused(false), 200);
-                                    }}
-                                />
-                            </View>
-
-                            {/* Auto-suggest Dropdown */}
-                            {isSearchFocused && searchQuery.length > 0 && (
-                                <View style={[styles.searchResults, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                                    <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
-                                        {filteredResults.length > 0 ? (
-                                            filteredResults.map((result) => (
-                                                <TouchableOpacity
-                                                    key={result.id}
-                                                    style={[styles.searchResultItem, { borderBottomColor: theme.border }]}
-                                                    onPress={() => {
-                                                        router.push(result.route as any);
-                                                        setSearchQuery('');
-                                                        setIsSearchFocused(false);
-                                                    }}
-                                                >
-                                                    <View>
-                                                        <Text style={[styles.searchResultTitle, { color: theme.text }]}>{result.title}</Text>
-                                                        <Text style={[styles.searchResultType, { color: theme.textSecondary }]}>{result.type}</Text>
-                                                    </View>
-                                                </TouchableOpacity>
-                                            ))
-                                        ) : (
-                                            <View style={styles.searchResultEmpty}>
-                                                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>No results found</Text>
-                                            </View>
-                                        )}
-                                    </ScrollView>
+                        {!isAdmin && (
+                            <View style={{ position: 'relative', zIndex: 1000 }}>
+                                <View style={[styles.searchBar, { backgroundColor: '#F5F7F8' }]}>
+                                    <Search size={16} color="#9BA4AD" />
+                                    <TextInput
+                                        placeholder="Search..."
+                                        style={styles.searchInput}
+                                        placeholderTextColor="#9BA4AD"
+                                        value={searchQuery}
+                                        onChangeText={setSearchQuery}
+                                        onFocus={() => setIsSearchFocused(true)}
+                                        onBlur={() => {
+                                            // Give time for onPress on results to register
+                                            setTimeout(() => setIsSearchFocused(false), 200);
+                                        }}
+                                    />
                                 </View>
-                            )}
-                        </View>
 
-                        <TouchableOpacity onPress={() => router.push('/profile')}>
-                            <View style={styles.profileAvatar}>
-                                <User size={18} color="#FFF" />
+                                {/* Auto-suggest Dropdown */}
+                                {isSearchFocused && searchQuery.length > 0 && (
+                                    <View style={[styles.searchResults, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                                        <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+                                            {filteredResults.length > 0 ? (
+                                                filteredResults.map((result) => (
+                                                    <TouchableOpacity
+                                                        key={result.id}
+                                                        style={[styles.searchResultItem, { borderBottomColor: theme.border }]}
+                                                        onPress={() => {
+                                                            router.push(result.route as any);
+                                                            setSearchQuery('');
+                                                            setIsSearchFocused(false);
+                                                        }}
+                                                    >
+                                                        <View>
+                                                            <Text style={[styles.searchResultTitle, { color: theme.text }]}>{result.title}</Text>
+                                                            <Text style={[styles.searchResultType, { color: theme.textSecondary }]}>{result.type}</Text>
+                                                        </View>
+                                                    </TouchableOpacity>
+                                                ))
+                                            ) : (
+                                                <View style={styles.searchResultEmpty}>
+                                                    <Text style={{ color: theme.textSecondary, fontSize: 13 }}>No results found</Text>
+                                                </View>
+                                            )}
+                                        </ScrollView>
+                                    </View>
+                                )}
+                            </View>
+                        )}
+
+                        <TouchableOpacity onPress={() => router.push(isAdmin ? '/' : '/profile')}>
+                            <View style={[styles.profileAvatar, { backgroundColor: isAdmin ? theme.primary : '#2D5A61' }]}>
+                                {isAdmin ? <ShieldCheck size={18} color="#FFF" /> : <User size={18} color="#FFF" />}
                             </View>
                         </TouchableOpacity>
                     </View>
@@ -145,18 +178,35 @@ function GlobalHeader() {
     );
 }
 
-
-
-
 // --- MAIN LAYOUT ---
 export default function TabLayout() {
     const { theme, isDarkMode } = useTheme();
     const { width } = useWindowDimensions();
+    const [userRole, setUserRole] = useState<'student' | 'admin' | null>(null);
+
+    useEffect(() => {
+        const checkRole = async () => {
+            try {
+                const savedData = await AsyncStorage.getItem('user_profile');
+                if (savedData) {
+                    const parsed = JSON.parse(savedData);
+                    setUserRole(parsed.role || 'student');
+                } else {
+                    setUserRole('student');
+                }
+            } catch (e) {
+                setUserRole('student');
+            }
+        };
+        checkRole();
+    }, []);
 
     // Breakpoints
     const isDesktop = width >= 1024;
     const isTablet = width >= 768 && width < 1024;
     const isMobile = width < 768;
+
+    const isAdmin = userRole === 'admin';
 
     return (
         <View style={styles.appWrapper}>
@@ -179,7 +229,7 @@ export default function TabLayout() {
                                 height: Platform.OS === 'ios' ? 90 : 70,
                                 paddingBottom: Platform.OS === 'ios' ? 30 : 12,
                                 paddingTop: 8,
-                                display: (isWeb && isDesktop) ? 'none' : 'flex',
+                                display: isAdmin ? 'none' : ((isWeb && isDesktop) ? 'none' : 'flex'),
                                 position: 'absolute',
                                 bottom: 0,
                                 left: 0,

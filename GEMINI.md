@@ -97,17 +97,13 @@ Changing field names, nesting, or adding top-level keys **breaks the mobile and 
 | Layer | Technology |
 |---|---|
 | Runtime | Node.js (ES Modules — `"type": "module"`) |
-| Framework | Express.js |
-| Database | MongoDB via Mongoose ODM |
-| Cache / Sessions | Redis (ioredis) |
+| Framework | Express.js 5 |
+| Database | PostgreSQL via Drizzle ORM (Neon DB) |
 | Validation | Zod (all request payloads and env vars) |
-| Auth | JWT (access) + Refresh token rotation (HttpOnly cookie) |
-| Password hashing | bcrypt (12 rounds) |
-| Logging | Winston + Morgan |
-| Job queue | Bull (Redis-backed) |
-| Rate limiting | express-rate-limit + rate-limit-redis |
+| Auth & Sessions | Better Auth |
+| Logging | Pino (Structured logger) |
+| Rate limiting | express-rate-limit |
 | Security headers | Helmet.js |
-| Sanitization | express-mongo-sanitize |
 | Environment | dotenv + Zod schema validated at startup |
 | API style | RESTful — versioned at `/api/v1/` |
 
@@ -119,55 +115,39 @@ Changing field names, nesting, or adding top-level keys **breaks the mobile and 
 Backend/
 ├── src/
 │   ├── config/
-│   │   ├── db.js                     ← mongoose.connect() with retry
-│   │   ├── redis.js                  ← ioredis client singleton
-│   │   └── env.js                    ← Zod env schema — validates at startup
-│   ├── middlewares/
-│   │   ├── auth.middleware.js         ← verifyToken (JWT)
-│   │   ├── role.middleware.js         ← checkRole(...roles)
-│   │   ├── subscription.middleware.js ← requirePremium
-│   │   ├── rateLimiter.middleware.js
-│   │   ├── asyncHandler.js            ← wraps async controllers
-│   │   └── error.middleware.js        ← centralized error handler
+│   │   └── env.js                        ← Zod env validation
+│   ├── db/
+│   │   ├── index.js                      ← Single Drizzle + Pool instance
+│   │   └── schema.js                     ← All Drizzle table definitions + indexes
+│   ├── shared/
+│   │   ├── middleware/
+│   │   │   ├── asyncHandler.js
+│   │   │   ├── auth.middleware.js
+│   │   │   ├── role.middleware.js
+│   │   │   ├── rateLimiter.middleware.js
+│   │   │   ├── validate.middleware.js     ← Zod request validation
+│   │   │   └── error.middleware.js        ← Global error handler
+│   │   ├── errors/
+│   │   │   └── AppError.js               ← Error class hierarchy
+│   │   ├── utils/
+│   │   │   ├── apiResponse.js            ← Standardized response helpers
+│   │   │   └── logger.js                 ← Pino structured logger
+│   │   └── constants/
+│   │       └── httpStatus.js
 │   ├── modules/
-│   │   ├── auth/               ← routes, controller, service, validation
-│   │   ├── users/
-│   │   ├── courses/
-│   │   ├── exams/
-│   │   ├── current-affairs/
-│   │   ├── gamification/
-│   │   ├── subscriptions/
-│   │   ├── notifications/
-│   │   ├── ai-analyst/
+│   │   ├── auth/
+│   │   │   ├── auth.routes.js
+│   │   │   ├── auth.controller.js
+│   │   │   ├── auth.service.js
+│   │   │   └── auth.schema.js            ← Zod validation schemas
+│   │   ├── articles/
+│   │   ├── quizzes/
 │   │   └── admin/
-│   ├── models/
-│   │   ├── User.model.js
-│   │   ├── Profile.model.js
-│   │   ├── UserStats.model.js
-│   │   ├── Article.model.js
-│   │   ├── ChatSession.model.js
-│   │   ├── Course.model.js
-│   │   ├── Lesson.model.js
-│   │   ├── Quiz.model.js
-│   │   ├── Question.model.js
-│   │   ├── Submission.model.js
-│   │   ├── Progress.model.js
-│   │   ├── Achievement.model.js
-│   │   └── Subscription.model.js
-│   ├── utils/
-│   │   ├── apiResponse.js      ← sendSuccess() + sendError()
-│   │   ├── apiError.js         ← AppError class
-│   │   ├── jwt.utils.js
-│   │   ├── otp.utils.js
-│   │   ├── paginate.utils.js   ← enforces max limit: 50
-│   │   └── logger.js           ← Winston
-│   ├── jobs/
-│   │   ├── notification.job.js
-│   │   └── streakReset.job.js
-│   ├── routes/
-│   │   └── index.js            ← mounts all module routes
-│   └── app.js                  ← express setup, global middleware
-├── server.js                   ← entry: env validate → db → listen
+│   ├── lib/
+│   │   └── auth.js                        ← Better Auth config
+│   └── app.js                             ← Express app setup (middleware chain)
+├── server.js                              ← Entry: env validate → db → app.listen()
+├── drizzle.config.js
 ├── .env.example
 └── package.json                ← "type": "module"
 ```
@@ -179,7 +159,7 @@ Backend/
 1. **Routes** → only declare route + middleware chain. No logic.
 2. **Controllers** → thin. Parse `req`, call service, call `sendSuccess()`. Nothing else.
 3. **Services** → all business logic lives here. Zod validation runs here.
-4. **Models** → Mongoose schema only. No business logic inside hooks beyond password hashing.
+4. **Models** → Drizzle schema only. No business logic.
 5. **Middlewares** → cross-cutting concerns only (auth, roles, rate limit, error).
 6. **Backend never trusts frontend input** — validate everything with Zod before it touches the DB.
 7. **All async controllers wrapped in `asyncHandler`** — no raw try/catch in controllers.
@@ -205,24 +185,11 @@ router.get('/premium-quiz', verifyToken, requirePremium, controller)
 
 ## Authentication Flow
 
-```
-POST /api/v1/auth/signup
-  → Zod validate → hash password → create User + Profile + UserStats
-  → return accessToken (15min) + set refreshToken cookie (HttpOnly, 7d)
-
-POST /api/v1/auth/login
-  → Zod validate → find user → bcrypt.compare → issue tokens → update streak
-
-POST /api/v1/auth/refresh
-  → read refreshToken from cookie → verify → rotate (invalidate old, issue new)
-  → detect reuse → revoke entire family → force re-login
-
-POST /api/v1/auth/logout
-  → clear cookie → invalidate refresh token hash in DB
-```
-
-**Access token:** `Authorization: Bearer <token>` header
-**Refresh token:** `HttpOnly; Secure; SameSite=Strict` cookie only — never in response body
+The backend uses **Better Auth** mounted at `/api/auth` which automatically handles:
+- Sign Up & Login (Email/Password)
+- Session Management & Validation
+- CSRF Protection
+- JWT / Session cookie management automatically configured based on `BETTER_AUTH_SECRET`.
 
 ---
 
@@ -254,15 +221,14 @@ Error responses:
 ## Database Indexing Rules
 
 Always index:
-- `User.email` — unique index
-- `Profile.user` — unique index
-- `UserStats.user` — unique index
-- `Article.publishedDate` — descending sort index
-- `Article.tag` — filter queries
-- `Submission.student` + `Submission.quiz` — compound index
-- `Progress.student` + `Progress.course` — compound unique index
-- `Subscription.student` — index + filter by status/expiry
-- `ChatSession.user` + `ChatSession.article` — compound index
+- `articles.publishedDate` — descending sort index
+- `articles.syllabusTag` — filter index
+- `articles.editionType` — filter index
+- `quizzes.articleId` — FK lookup index
+- `questions.quizId` — FK lookup index
+- `submissions.studentId` — lookup index
+- `submissions.quizId` — lookup index
+- `chatSession.userId + articleId` — compound index
 
 ---
 
@@ -321,21 +287,12 @@ All XP awards go through `gamificationService.awardXP(userId, amount, reason)` �
 ```
 NODE_ENV
 PORT
-MONGO_URI
-REDIS_URL
-JWT_ACCESS_SECRET        (min 64 chars)
-JWT_REFRESH_SECRET       (min 64 chars, different from access)
-JWT_ACCESS_EXPIRY        (15m)
-JWT_REFRESH_EXPIRY       (7d)
-BCRYPT_ROUNDS            (12)
-COOKIE_SECRET            (min 32 chars)
+DATABASE_URL             (postgresql://...)
+BETTER_AUTH_SECRET       (min 32 chars)
+BETTER_AUTH_URL          (http://localhost:5000)
+JWT_SECRET               (min 32 chars)
+GEMINI_API_KEY
 CORS_ORIGINS             (comma-separated)
-OTP_EXPIRY_MINUTES
-OTP_MAX_ATTEMPTS
-RESEND_API_KEY
-FCM_SERVER_KEY
-RAZORPAY_KEY_ID
-RAZORPAY_KEY_SECRET
 ```
 
 Server will not start if any required var is missing — Zod throws at boot before any routes register.

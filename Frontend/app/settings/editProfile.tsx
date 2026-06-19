@@ -45,7 +45,17 @@ export default function EditProfileScreen() {
 
     const handleSave = async () => {
         try {
-            const profileData = { name, targetYear, optionalSubject, attemptCount, dailyGoal, homeState };
+            const savedProfile = await AsyncStorage.getItem('user_profile');
+            const parsed = savedProfile ? JSON.parse(savedProfile) : {};
+            const profileData = {
+                ...parsed,
+                name,
+                targetYear,
+                optionalSubject,
+                attemptCount,
+                dailyGoal,
+                homeState
+            };
             await AsyncStorage.setItem('user_profile', JSON.stringify(profileData));
 
             if (Platform.OS !== 'web') {

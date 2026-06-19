@@ -179,6 +179,29 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
+                {/* Admin Console Entry Point */}
+                {(userData as any).role === 'admin' && (
+                    <TouchableOpacity
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            router.push('/admin');
+                        }}
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: 18,
+                            borderRadius: 20,
+                            backgroundColor: theme.primary,
+                            marginBottom: 25,
+                            gap: 12,
+                        }}
+                    >
+                        <Settings size={20} color="#FFF" />
+                        <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '800' }}>Admin Control Portal</Text>
+                        <ChevronRight size={18} color="#FFF" style={{ marginLeft: 'auto' }} />
+                    </TouchableOpacity>
+                )}
+
                 {/* Account Menu */}
                 <Text style={s.sectionTitle}>ACCOUNT MENU</Text>
                 <View style={[s.menuBox, { backgroundColor: cardBg, borderColor: borderCol, borderWidth: 1 }]}>

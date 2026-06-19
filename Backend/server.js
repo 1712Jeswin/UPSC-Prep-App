@@ -1,57 +1,50 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import authRoutes from "./src/modules/auth/auth.routes.js";
-import { auth } from "./src/lib/auth.js";
-import { toNodeHandler } from "better-auth/node";
+/**
+ * UPSC Platform — Server Entry Point
+ *
+ * Responsibilities:
+ * 1. Validate environment variables (fails fast if invalid)
+ * 2. Import the Express app
+ * 3. Start listening
+ * 4. Handle graceful shutdown
+ */
 
-import { db } from "./src/db/index.js";
-import { user } from "./src/db/schema.js";
+// ─── 1. Env Validation (must be first import) ──────────────────
+import { env } from './src/config/env.js';
 
-dotenv.config();
+// ─── 2. Import App ─────────────────────────────────────────────
+import app from './src/app.js';
+import { logger } from './src/shared/utils/logger.js';
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Middleware
-app.use(cors()); // Simple CORS as requested
-app.use(express.json());
-
-// Custom Auth Routes
-app.use("/api/auth", authRoutes);
-
-// Better Auth handler (Standard Express 5 mount without wildcard)
-app.use("/api/auth", toNodeHandler(auth));
-
-// Test route (Drizzle check)
-app.get("/db-check", async (req, res) => {
-  try {
-    const allUsers = await db.select().from(user);
-    res.json({ success: true, count: allUsers.length });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+// ─── 3. Start Server ───────────────────────────────────────────
+const server = app.listen(env.PORT, () => {
+  logger.info({ port: env.PORT, env: env.NODE_ENV }, `Server running on http://localhost:${env.PORT}`);
 });
 
-// Test route
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "UPSC Platform API is running 🚀"
+// ─── 4. Graceful Shutdown ──────────────────────────────────────
+const shutdown = (signal) => {
+  logger.info({ signal }, 'Received shutdown signal, closing server...');
+  server.close(() => {
+    logger.info('Server closed gracefully');
+    process.exit(0);
   });
+
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10_000);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Catch unhandled rejections and uncaught exceptions
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ err: reason }, 'Unhandled Rejection');
+  shutdown('unhandledRejection');
 });
 
-// Global Error Handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: err.message || "Internal Server Error",
-    errors: []
-  });
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+process.on('uncaughtException', (error) => {
+  logger.fatal({ err: error }, 'Uncaught Exception');
+  shutdown('uncaughtException');
 });
