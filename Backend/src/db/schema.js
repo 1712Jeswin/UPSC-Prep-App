@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 // ==========================================
 // 1. CORE AUTHENTICATION TABLES (Better Auth Compatible)
@@ -73,7 +73,11 @@ export const articles = pgTable("articles", {
     interviewContent: text("interview_content"),
     editionType: text("edition_type").notNull(), // "MORNING" or "EVENING"
     publishedDate: timestamp("published_date").defaultNow().notNull(),
-});
+}, (table) => ([
+    index("articles_published_date_idx").on(table.publishedDate),
+    index("articles_syllabus_tag_idx").on(table.syllabusTag),
+    index("articles_edition_type_idx").on(table.editionType),
+]));
 
 export const chatSession = pgTable("chat_session", {
     id: text("id").primaryKey(),
@@ -81,7 +85,9 @@ export const chatSession = pgTable("chat_session", {
     articleId: text("article_id").notNull().references(() => articles.id, { onDelete: "cascade" }),
     messages: text("messages").notNull(), // Stringified JSON array of message objects
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ([
+    index("chat_session_user_article_idx").on(table.userId, table.articleId),
+]));
 
 // ==========================================
 // 3. QUIZ, QUESTION & SUBMISSION TABLES
@@ -94,7 +100,9 @@ export const quizzes = pgTable("quizzes", {
     passingScore: integer("passing_score").default(3).notNull(),
     totalQuestions: integer("total_questions").default(5).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ([
+    index("quizzes_article_id_idx").on(table.articleId),
+]));
 
 export const questions = pgTable("questions", {
     id: text("id").primaryKey(),
@@ -103,7 +111,9 @@ export const questions = pgTable("questions", {
     options: text("options").notNull(), // Stored as a stringified JSON string array
     correctOptionIndex: integer("correct_option_index").notNull(),
     explanation: text("explanation"),
-});
+}, (table) => ([
+    index("questions_quiz_id_idx").on(table.quizId),
+]));
 
 export const submissions = pgTable("submissions", {
     id: text("id").primaryKey(),
@@ -113,7 +123,10 @@ export const submissions = pgTable("submissions", {
     score: integer("score").notNull(),
     passed: boolean("passed").notNull(),
     attemptedAt: timestamp("attempted_at").defaultNow().notNull(),
-});
+}, (table) => ([
+    index("submissions_student_id_idx").on(table.studentId),
+    index("submissions_quiz_id_idx").on(table.quizId),
+]));
 
 // ==========================================
 // 4. NOTES & STUDY MATERIALS

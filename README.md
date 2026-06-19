@@ -4,13 +4,20 @@ This repository contains the backend and frontend for the UPSC educational platf
 
 ## Project Structure
 
-- `instructions/`: Contains all architectural guidelines and phased development prompts.
-  - [GEMINI.md](./instructions/GEMINI.md): Core architectural and security principles.
-  - [instructions.md](./instructions/instructions.md): Step-by-step development phases.
-  - [runflow.md](./instructions/runflow.md): Operational workflow for the AI agent.
-- `Backend/`: The Node.js/Express backend application.
+- `GEMINI.md`: Core architectural and security principles.
+- `instructions.md`: Step-by-step development phases.
+- `Backend/`: The Node.js/Express backend application using PostgreSQL, Drizzle ORM, and Better Auth.
 - `Frontend/`: The React Native/Expo mobile application.
 
 ## Getting Started
 
-Please refer to [runflow.md](./instructions/runflow.md) to begin the development process following the defined phases in [instructions.md](./instructions/instructions.md).
+### Backend Setup
+
+1. Navigate to the `Backend/` directory: `cd Backend`
+2. Install dependencies: `npm install`
+3. Copy the `.env.example` file to `.env`: `cp .env.example .env`
+4. Fill in all required environment variables in the `.env` file (e.g., `DATABASE_URL`, `BETTER_AUTH_SECRET`, `GEMINI_API_KEY`).
+5. Run Drizzle database migrations: `npx drizzle-kit push` (or `npx drizzle-kit generate` if applying locally).
+6. Start the development server: `npm run dev`
+
+The server will run on the specified `PORT` (default 5000) and validate your environment variables at startup.
